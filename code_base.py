@@ -1,75 +1,86 @@
-import gradio as gr  # Frontend module
+import gradio as gr
 import ollama
 import warnings
 warnings.filterwarnings("ignore")
 
-MODEL = "qwen2.5-coder:3b"  # Example Model
-
-""" Download Ollama models from the official Ollama site.
-    Current Model available: *** """
+MODEL = "qwen2.5-coder:3b"
 
 simple_css = """
-    .gradio-container {
+.gradio-container {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
     min-height: 100vh;
     padding: 20px;
-
 }
 """
 
-system_prompt = ("You are a helpful assistant that provides concise, direct answers. "
-                 "Keep responses brief and to the point. Avoid unnecessary explanations and wordiness.")
+system_prompt = (
+    "You are a helpful assistant that provides concise, direct answers. "
+    "Keep responses brief and to the point."
+)
+
+# I need to understand how this block works
+def extract_text(content):
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            block.get("text", "")
+            for block in content
+            if block.get("type") == "text"
+        )
+    return ""
 
 
 def chat_with_ollama(message, history):
-    """Correct function signature for ChatInterface"""
+    messages = [{"role": "system", "content": system_prompt}]
 
-    # Convert Gradio history format to Ollama format
-    messages = []
-    for human_msg, ai_msg in history:
-        messages.append({"role": "user", "content": human_msg})
-        if ai_msg:  # Add AI response if it exists
-            messages.append({"role": "assistant", "content": system_prompt})
+    for msg in history:
+        text = extract_text(msg["content"])
+        if text.strip():
+            messages.append({
+                "role": msg["role"],
+                "content": text
+            })
+
     messages.append({"role": "user", "content": message})
 
-    # Stream the response, this creates a 'typing' effect to the Ai response
-    partial_response = ""
     stream = ollama.chat(
         model=MODEL,
         messages=messages,
         stream=True
     )
 
-    # Yield each token as it arrives
+    partial = ""
     for chunk in stream:
-        if 'message' in chunk and 'content' in chunk['message']:
-            token = chunk['message']['content']
-            partial_response += token
-            yield partial_response
+        if "message" in chunk and "content" in chunk["message"]:
+            partial += chunk["message"]["content"]
+            yield partial
 
 
-# Create the interface
-demo = gr.ChatInterface(
-    chat_with_ollama,
-    title="Qwen-Codify 2.5",
-    description="Local Ai assistant feat. qwen2.5",
-    theme="soft",  # Change to 'default' for more control
-    type="tuples",
-    css=simple_css,
-    examples=[["Hello!"], ["How LLMs work?"], ["Need help with Python code."]],
-    example_labels=[
-        "👋 Greetings!",
-        "🧠 Explain LLMs.",
-        "🐍 Help me program."],
 
-    chatbot=gr.Chatbot(
-        height=500,
-        type="tuples",
-        avatar_images=(
-            "llama logo.png",
-            "qwen.png"
+with gr.Blocks(
+    theme=gr.themes.Soft(),
+    css=simple_css
+) as demo:
+
+    gr.ChatInterface(
+        chat_with_ollama,
+        title=MODEL,
+        description=f"Local AI assistant feat. {MODEL}",
+        examples=[
+            ["Hello!"],
+            ["How LLMs work?"],
+            ["Need help with Python code."]
+        ],
+        example_labels=[
+            "👋 Greetings!",
+            "🧠 Explain LLMs.",
+            "🐍 Help me program."
+        ],
+        chatbot=gr.Chatbot(
+            height=500,
+            avatar_images=("llama logo.png", "qwen.png")
         )
     )
-)
 
-demo.launch(share=False)  # share=True, to publicly share link, otherwise local
+demo.launch()
